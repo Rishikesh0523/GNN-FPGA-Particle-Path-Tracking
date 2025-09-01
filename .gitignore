@@ -1,0 +1,29 @@
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+
+# Memory init files (large, regenerated)
+*.mem
+*.mif
+mem_files/
+mif/
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.synctex.gz
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+
+# Vivado / Quartus build outputs
+*.jou
+*.dir/
+*.cache/
+*.runs/
+*.gen/
+*.sim/
+*.hw/
+*.ip_user_files/
