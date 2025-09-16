@@ -20,3 +20,12 @@ normalization.
 * Vivado 2023.2+ (URAM288 / BRAM18 primitives)
 * Python 3.10+ for generator scripts
 * numpy for `gen_expected.py`
+
+## Simulation
+
+```
+iverilog -g2012 -o sim *.v
+vvp sim
+```
+
+Memory init files live in `mem_files/` and `mif/` (both gitignored).
