@@ -8,7 +8,8 @@ module storage_module
     parameter RAM_ADDR_BITS_FOR_NODE = 10,
     parameter RAM_ADDR_BITS_FOR_EDGE = 10,
     parameter NUM_NODES = 0,
-    parameter NUM_EDGES = 0
+    parameter NUM_EDGES = 0,
+    parameter FEATURE_DIM = 32
 )
 (
     input clk,
@@ -19,9 +20,11 @@ module storage_module
     input  node_we,
     input  [DATA_BITS-1:0] edge_din,
     input  [DATA_BITS-1:0] node_din,
-    output [DATA_BITS-1:0] edge_dout,
-    output [DATA_BITS-1:0] node_dout
+    output reg [DATA_BITS-1:0] edge_dout,
+    output reg [DATA_BITS-1:0] node_dout
 );
+
+    wire [DATA_BITS-1:0] edge_raw, node_raw;
 
     bram_dual #(
         .RAM_WIDTH(DATA_BITS),
@@ -29,7 +32,7 @@ module storage_module
     ) u_edge_bram (
         .clock(clk),
         .we_a(edge_we), .en_a(1'b1), .addr_a(edge_addr), .din_a(edge_din),
-        .en_b(1'b1), .addr_b(edge_addr), .dout_b(edge_dout)
+        .en_b(1'b1), .addr_b(edge_addr), .dout_b(edge_raw)
     );
 
     bram_dual #(
@@ -38,7 +41,18 @@ module storage_module
     ) u_node_bram (
         .clock(clk),
         .we_a(node_we), .en_a(1'b1), .addr_a(node_addr), .din_a(node_din),
-        .en_b(1'b1), .addr_b(node_addr), .dout_b(node_dout)
+        .en_b(1'b1), .addr_b(node_addr), .dout_b(node_raw)
     );
+
+    // Registered outputs with reset
+    always @(posedge clk) begin
+        if (rst) begin
+            edge_dout <= {DATA_BITS{1'b0}};
+            node_dout <= {DATA_BITS{1'b0}};
+        end else begin
+            edge_dout <= edge_raw;
+            node_dout <= node_raw;
+        end
+    end
 
 endmodule
