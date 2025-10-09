@@ -2,6 +2,7 @@
 // Dual-port BRAM wrapper. Port A: write, Port B: read.
 // DATA_FILE if non-empty triggers $readmemb on a range
 // [INIT_START_ADDR, INIT_END_ADDR] at elaboration time.
+// Inferred as URAM for wide buffers; falls back to BRAM18 otherwise.
 module bram_dual #(
     parameter RAM_WIDTH       = 8,
     parameter RAM_ADDR_BITS   = 12,
@@ -18,7 +19,7 @@ module bram_dual #(
     input [RAM_ADDR_BITS-1:0] addr_b,
     output reg [RAM_WIDTH-1:0] dout_b
 );
-    (* RAM_STYLE = "BLOCK" *)
+    (* RAM_STYLE = "ULTRA" *)
     reg [RAM_WIDTH-1:0] ram_name [(2**RAM_ADDR_BITS)-1:0];
 
     initial begin
