@@ -1,3 +1,6 @@
+// layer_norm_varience.v
+// Streaming variance accumulator. Accumulator widened by
+// EXTRA_BITS to avoid saturation across long feature dims.
 `timescale 1ns / 1ps
 module layer_norm_variance #(
     parameter NUM_FEATURES   = 32,
