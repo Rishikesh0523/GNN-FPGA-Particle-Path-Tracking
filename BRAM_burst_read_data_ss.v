@@ -1,7 +1,6 @@
 `timescale 1ns / 1ps
-// Sequencer that issues sustained burst reads from bram_burst_wrapper
-// and forwards beats to the encoder pipeline.
-// Initial cut: pipelined start/done handshake; data path tied off.
+// Sequencer that drives bram_burst_wrapper for sustained encoder feeds.
+// One outstanding burst at a time; raises done for one cycle on completion.
 module BRAM_burst_read_data_ss #(
     parameter DATA_BITS      = 8,
     parameter RAM_ADDR_BITS  = 12,
@@ -12,17 +11,29 @@ module BRAM_burst_read_data_ss #(
     input start,
     input [RAM_ADDR_BITS-1:0] addr_base,
     input [$clog2(MAX_BURST_SIZE):0] burst_size,
-    output reg busy,
-    output reg done,
-    output reg [DATA_BITS*MAX_BURST_SIZE-1:0] data_out
+    output wire busy,
+    output wire done,
+    output wire [DATA_BITS*MAX_BURST_SIZE-1:0] data_out
 );
-    always @(posedge clk) begin
-        if (rst) begin
-            busy <= 1'b0;
-            done <= 1'b0;
-            data_out <= {DATA_BITS*MAX_BURST_SIZE{1'b0}};
-        end else if (start) begin
-            busy <= 1'b1;
-        end
-    end
+    wire bw_done, bw_busy;
+    wire [DATA_BITS*MAX_BURST_SIZE-1:0] bw_data;
+
+    bram_burst_wrapper #(
+        .DATA_BITS(DATA_BITS),
+        .RAM_ADDR_BITS(RAM_ADDR_BITS),
+        .MAX_BURST_SIZE(MAX_BURST_SIZE)
+    ) u_burst (
+        .clk(clk), .rst(rst),
+        .start(start), .write_en(1'b0),
+        .addr_base(addr_base),
+        .burst_size(burst_size),
+        .din_packed({DATA_BITS*MAX_BURST_SIZE{1'b0}}),
+        .busy(bw_busy),
+        .done(bw_done),
+        .dout_packed(bw_data)
+    );
+
+    assign busy     = bw_busy;
+    assign done     = bw_done;
+    assign data_out = bw_data;
 endmodule
