@@ -1,4 +1,4 @@
-"""Sanity checks for layer-norm components against numpy references."""
+"""Sanity checks for normalization components against numpy references."""
 import math
 from lut_generator import gen, LUT_SIZE, FRAC_BITS
 
@@ -14,7 +14,6 @@ def check_inv_sqrt():
 
 
 def check_variance_overflow_room():
-    # Worst-case input range
     n = 32
     extra = 8
     max_sq = (1 << 15) ** 2
@@ -22,6 +21,15 @@ def check_variance_overflow_room():
     print("variance: headroom OK")
 
 
+def check_rms_invariant():
+    # RMS of a constant signal should equal the constant.
+    vals = [10] * 64
+    rms = math.sqrt(sum(v * v for v in vals) / len(vals))
+    assert abs(rms - 10) < 1e-9
+    print("rms: identity OK")
+
+
 if __name__ == "__main__":
     check_inv_sqrt()
     check_variance_overflow_room()
+    check_rms_invariant()
