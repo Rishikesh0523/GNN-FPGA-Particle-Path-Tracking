@@ -3,6 +3,7 @@
 // DATA_FILE if non-empty triggers $readmemb on a range
 // [INIT_START_ADDR, INIT_END_ADDR] at elaboration time.
 // Inferred as URAM for wide buffers; falls back to BRAM18 otherwise.
+// Read latency: 1 cycle. Write/read on same address yields old data (NO_CHANGE).
 module bram_dual #(
     parameter RAM_WIDTH       = 8,
     parameter RAM_ADDR_BITS   = 12,
