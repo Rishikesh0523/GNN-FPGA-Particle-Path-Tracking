@@ -1,35 +1,27 @@
-"""Sanity checks for normalization components against numpy references."""
-import math
-from lut_generator import gen, LUT_SIZE, FRAC_BITS
+VAR_MIN   = 0.01
+VAR_MAX   = 1024.0
+LUT_SIZE  = 20
+FRAC_BITS = 20
+VAR_BITS  = 32
 
+scale = 2 ** FRAC_BITS
 
-def check_inv_sqrt():
-    lut = gen()
-    for i in range(LUT_SIZE):
-        ref = 1.0 / math.sqrt(max(i, 1) / LUT_SIZE)
-        got = lut[i] / (1 << FRAC_BITS)
-        err = abs(ref - got)
-        assert err < 0.05, (i, ref, got, err)
-    print("inv_sqrt: OK", LUT_SIZE, "entries")
+# Generate localparams
+for i in range(LUT_SIZE - 1):
+    t = VAR_MIN * (VAR_MAX / VAR_MIN) ** ((i + 1) / (LUT_SIZE - 1))
+    fixed = round(t * scale)
+    fixed = min(fixed, (1 << VAR_BITS) - 1)
+    print(f"localparam [VAR_BITS-1:0] THR_{i:<2} = 32'h{fixed:08X};  // {t:.6f}")
 
+print()
 
-def check_variance_overflow_room():
-    n = 32
-    extra = 8
-    max_sq = (1 << 15) ** 2
-    assert n * max_sq < (1 << (15 + 15 + extra))
-    print("variance: headroom OK")
-
-
-def check_rms_invariant():
-    # RMS of a constant signal should equal the constant.
-    vals = [10] * 64
-    rms = math.sqrt(sum(v * v for v in vals) / len(vals))
-    assert abs(rms - 10) < 1e-9
-    print("rms: identity OK")
-
-
-if __name__ == "__main__":
-    check_inv_sqrt()
-    check_variance_overflow_room()
-    check_rms_invariant()
+# Generate function
+print("function [LUT_BITS-1:0] variance_to_lut_addr;")
+print("    input [VAR_BITS-1:0] var_in;")
+print("    begin")
+for i in range(LUT_SIZE - 1):
+    prefix = "if      " if i == 0 else "else if "
+    print(f"        {prefix}(var_in <= THR_{i:<2}) variance_to_lut_addr = {i};")
+print(f"        else                       variance_to_lut_addr = {LUT_SIZE - 1};")
+print("    end")
+print("endfunction")
