@@ -2,8 +2,8 @@
 // Dual-port BRAM wrapper. Port A: write, Port B: read.
 // DATA_FILE if non-empty triggers $readmemb on a range
 // [INIT_START_ADDR, INIT_END_ADDR] at elaboration time.
-// Inferred as URAM for wide buffers; falls back to BRAM18 otherwise.
-// Read latency: 1 cycle. Write/read on same address yields old data (NO_CHANGE).
+// RAM_STYLE = ULTRA for large feature buffers.
+// Write/Read: separate ports, NO_CHANGE semantics on collision.
 module bram_dual #(
     parameter RAM_WIDTH       = 8,
     parameter RAM_ADDR_BITS   = 12,
@@ -29,10 +29,12 @@ module bram_dual #(
         end
     end
 
+    // Write port
     always @(posedge clock) begin
         if (en_a && we_a) ram_name[addr_a] <= din_a;
     end
 
+    // Read port
     always @(posedge clock) begin
         if (en_b) dout_b <= ram_name[addr_b];
     end
