@@ -29,3 +29,17 @@ vvp sim
 ```
 
 Memory init files live in `mem_files/` and `mif/` (both gitignored).
+
+## Memory layout
+
+BRAM bank assignment (current target: XCAU25P):
+
+| Bank        | Purpose                                |
+|-------------|----------------------------------------|
+| URAM 0..3   | Edge feature ping-pong buffers         |
+| URAM 4..7   | Node feature ping-pong buffers         |
+| BRAM18 0..1 | Connectivity src/dst tables            |
+| BRAM18 2..3 | Layer-norm gamma / beta MIF storage    |
+
+Burst sequencer (`BRAM_burst_read_data_ss.v`) streams 32-beat windows
+to the encoder pipeline.
