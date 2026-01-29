@@ -43,3 +43,14 @@ BRAM bank assignment (current target: XCAU25P):
 
 Burst sequencer (`BRAM_burst_read_data_ss.v`) streams 32-beat windows
 to the encoder pipeline.
+
+## Throughput targets
+
+| Stage          | Throughput target (beats/cycle) | Notes                |
+|----------------|---------------------------------|----------------------|
+| BRAM burst seq | 1 beat / cycle                  | 32-beat windows      |
+| Edge encoder   | 1 edge / 35 cycles              | LN + 3 MLP layers    |
+| Node encoder   | 1 node / 35 cycles              | LN + 3 MLP layers    |
+| MP block       | ~256 cycles / block             | 8 blocks, 3 layers   |
+
+These numbers will tighten as pipeline depth tuning progresses.
