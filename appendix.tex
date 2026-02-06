@@ -1,0 +1,31 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{listings}
+\usepackage{booktabs}
+
+\title{FPGA GNN Accelerator: Architecture Appendix (Draft)}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Overview}
+
+This document describes the architecture of the FPGA-based graph
+neural network inference accelerator. The pipeline consists of an
+encoder stage, a message-passing block, and a decoder.
+
+\section{Pipeline Stages}
+
+\begin{enumerate}
+  \item Edge / node feature encoders (3-layer MLP with layer norm).
+  \item Message-passing block (8 sub-blocks of 3 layers each).
+  \item Edge decoder producing final per-edge predictions.
+\end{enumerate}
+
+\section{Memory Subsystem}
+
+BRAM-backed feature buffers fed by a burst sequencer.
+
+\end{document}
