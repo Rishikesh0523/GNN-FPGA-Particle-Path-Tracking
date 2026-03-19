@@ -1,31 +1,292 @@
-\documentclass[11pt,a4paper]{article}
-\usepackage[margin=1in]{geometry}
+\documentclass[10pt,a4paper]{article}
+\usepackage[a4paper,margin=0.7in]{geometry}
 \usepackage{listings}
-\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{appendix}
 
-\title{FPGA GNN Accelerator: Architecture Appendix (Draft)}
-\author{}
-\date{}
+% --- Verilog listing style ----------------------------------------------------
+\definecolor{kw}{rgb}{0.10,0.20,0.65}
+\definecolor{cm}{rgb}{0.30,0.55,0.30}
+\definecolor{st}{rgb}{0.65,0.10,0.10}
+\definecolor{bg}{rgb}{0.97,0.97,0.97}
+
+\lstdefinelanguage{Verilog}{
+  morekeywords={module,endmodule,input,output,inout,wire,reg,parameter,
+    localparam,assign,always,posedge,negedge,begin,end,if,else,case,endcase,
+    default,for,generate,endgenerate,genvar,signed,unsigned,initial,integer,
+    function,endfunction,task,endtask,return,or,and,not,xor},
+  sensitive=true,
+  morecomment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]"
+}
+
+\lstset{
+  language=Verilog,
+  basicstyle=\ttfamily\scriptsize,
+  keywordstyle=\color{kw}\bfseries,
+  commentstyle=\color{cm}\itshape,
+  stringstyle=\color{st},
+  backgroundcolor=\color{bg},
+  breaklines=true,
+  showstringspaces=false,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=4pt,
+  xleftmargin=14pt,
+  framexleftmargin=12pt,
+  frame=single,
+  rulecolor=\color{lightgray},
+  tabsize=2,
+  aboveskip=4pt,
+  belowskip=4pt,
+  captionpos=b
+}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{2pt}
 
 \begin{document}
-\maketitle
 
-\section{Overview}
+\appendix
+\section{Code Snippets of Key RTL Modules}
+\label{appendix:rtl}
 
-This document describes the architecture of the FPGA-based graph
-neural network inference accelerator. The pipeline consists of an
-encoder stage, a message-passing block, and a decoder.
+This appendix collects representative code excerpts from the Verilog
+implementation of the GNN accelerator. Snippets focus on the
+computational kernels (parallel MAC neuron, ReLU/saturation, layer
+normalization, pipelined edge network), the top-level phase FSM, and
+the small primitive blocks (counter, multiplier).
 
-\section{Pipeline Stages}
+% =============================================================================
+\subsection{Parallel MAC Neuron (\texttt{neuron.v})}
+4-lane parallel multiply--accumulate; processes 4 weight$\times$data
+pairs per cycle and accumulates with a 2-level adder tree. Cuts counter
+cycles by~$4\times$ vs the scalar version (e.g. 192$\to$48 for L1 edge).
 
-\begin{enumerate}
-  \item Edge / node feature encoders (3-layer MLP with layer norm).
-  \item Message-passing block (8 sub-blocks of 3 layers each).
-  \item Edge decoder producing final per-edge predictions.
-\end{enumerate}
+\begin{lstlisting}
+module neuron #(parameter NEURON_WIDTH=8, DATA_BITS=16, WEIGHT_BITS=32,
+                BIAS_BITS=16, WeightFile="...", BiasFile="...")(
+    input clk, rstn, activation_function,
+    input  signed [NEURON_WIDTH*DATA_BITS-1:0] data_in_flat,
+    input  [31:0] counter,
+    output signed [DATA_BITS+WEIGHT_BITS+8-1:0] data_out);
 
-\section{Memory Subsystem}
+  localparam ACCUM_BITS = DATA_BITS+WEIGHT_BITS+8, N=4;
+  reg signed [WEIGHT_BITS-1:0] weights [0:NEURON_WIDTH-1];
+  reg signed [BIAS_BITS-1:0]   bias_mem [0:0];
+  initial begin
+    $readmemb(WeightFile, weights);
+    $readmemb(BiasFile,   bias_mem);
+  end
 
-BRAM-backed feature buffers fed by a burst sequencer.
+  // 4 parallel multiply lanes
+  wire signed [DATA_BITS-1:0]   x [0:N-1];
+  wire signed [WEIGHT_BITS-1:0] w [0:N-1];
+  reg  signed [DATA_BITS+WEIGHT_BITS-1:0] prod [0:N-1];
+  genvar k;
+  generate for (k=0; k<N; k=k+1) begin : lane
+    wire [31:0] idx = (counter>=1) ? (counter-1)*N+k : 0;
+    assign w[k] = (counter>=1 && idx<NEURON_WIDTH) ? weights[idx] : 0;
+    assign x[k] = (counter>=1 && idx<NEURON_WIDTH) ?
+                  data_in_flat[idx*DATA_BITS +: DATA_BITS] : 0;
+    always @(posedge clk or negedge rstn)
+      if (!rstn) prod[k] <= 0; else prod[k] <= w[k]*x[k];
+  end endgenerate
+
+  // 2-level adder tree: (p0+p1) + (p2+p3)
+  wire signed [DATA_BITS+WEIGHT_BITS:0] s01, s23;
+  assign s01 = {{1{prod[0][DATA_BITS+WEIGHT_BITS-1]}},prod[0]}
+             + {{1{prod[1][DATA_BITS+WEIGHT_BITS-1]}},prod[1]};
+  assign s23 = {{1{prod[2][DATA_BITS+WEIGHT_BITS-1]}},prod[2]}
+             + {{1{prod[3][DATA_BITS+WEIGHT_BITS-1]}},prod[3]};
+  wire signed [DATA_BITS+WEIGHT_BITS+1:0] partial = s01 + s23;
+
+  // Accumulator: starts at counter=2 (1cy mult latency)
+  reg signed [ACCUM_BITS-1:0] accumulator, data_out_r;
+  always @(posedge clk or negedge rstn) begin
+    if (!rstn)            begin accumulator<=0; data_out_r<=0; end
+    else if (counter==1)  begin accumulator<=0; data_out_r<=0; end
+    else if (counter==2)  begin accumulator<=accumulator+partial;
+                                data_out_r<=accumulator+partial; end
+    else if (counter>=3)  begin accumulator<=accumulator+partial;
+                                data_out_r<=accumulator; end
+  end
+  assign data_out = data_out_r;
+endmodule
+\end{lstlisting}
+
+% =============================================================================
+\subsection{ReLU + Saturation (\texttt{ReLu.v})}
+Adds bias on the final counter tick, optionally applies ReLU, and
+saturates the wide accumulator down to \texttt{DATA\_BITS} (Q4.4).
+
+\begin{lstlisting}
+module ReLu #(parameter DATA_BITS=8, WEIGHT_BITS=8, COUNTER_END=6,
+              BIAS_BITS=8, ACCUM_EXTRA=8, WEIGHT_FRAC_BITS=6)(
+    input clk, rstn, activation_function, input [31:0] counter,
+    input signed [DATA_BITS+WEIGHT_BITS+ACCUM_EXTRA-1:0] mult_sum_in,
+    input signed [BIAS_BITS-1:0] b,
+    output reg signed [DATA_BITS-1:0] neuron_out);
+  localparam signed [DATA_BITS-1:0] OUT_MAX = {1'b0,{(DATA_BITS-1){1'b1}}};
+  localparam signed [DATA_BITS-1:0] OUT_MIN = {1'b1,{(DATA_BITS-1){1'b0}}};
+  localparam signed [DATA_BITS+WEIGHT_BITS+ACCUM_EXTRA-1:0]
+    MAX_VAL = {{(WEIGHT_BITS+ACCUM_EXTRA){1'b0}}, OUT_MAX},
+    MIN_VAL = {{(WEIGHT_BITS+ACCUM_EXTRA){1'b1}}, OUT_MIN};
+  reg signed [DATA_BITS+WEIGHT_BITS+ACCUM_EXTRA-1:0] biased_sum;
+  reg signed [DATA_BITS-1:0] neuron_out_next;
+  always @(posedge clk or negedge rstn) begin
+    if (!rstn) neuron_out <= 0;
+    else if (counter == COUNTER_END) begin
+      biased_sum = mult_sum_in +
+        {{(DATA_BITS+WEIGHT_BITS+ACCUM_EXTRA-BIAS_BITS){b[BIAS_BITS-1]}}, b};
+      if (activation_function) begin           // ReLU + saturation
+        if      (biased_sum < 0)        neuron_out_next = 0;
+        else if (biased_sum > MAX_VAL)  neuron_out_next = OUT_MAX;
+        else neuron_out_next =
+          biased_sum[DATA_BITS+WEIGHT_BITS-WEIGHT_FRAC_BITS-1 -:DATA_BITS];
+      end else begin                           // Linear + saturation
+        if      (biased_sum > MAX_VAL) neuron_out_next = OUT_MAX;
+        else if (biased_sum < MIN_VAL) neuron_out_next = OUT_MIN;
+        else neuron_out_next =
+          biased_sum[DATA_BITS+WEIGHT_BITS-WEIGHT_FRAC_BITS-1 -:DATA_BITS];
+      end
+      neuron_out <= neuron_out_next;
+    end
+  end
+endmodule
+\end{lstlisting}
+
+% =============================================================================
+\subsection{Top-Level Phase FSM (\texttt{topModule.v})}
+Coordinates the pipeline phases. Edge and node encoders run in parallel
+(shared no resources); message passing follows, then the edge decoder.
+
+\begin{lstlisting}
+localparam PHASE_IDLE=0, PHASE_EDGE_ENCODE=1, PHASE_EDGE_ENCODE_WAIT=2,
+           PHASE_NODE_ENCODE=3, PHASE_NODE_ENCODE_WAIT=4,
+           PHASE_MESSAGE_PASSING=5, PHASE_MESSAGE_PASSING_WAIT=6,
+           PHASE_EDGE_DECODE=7, PHASE_EDGE_DECODE_WAIT=8, PHASE_DONE=9;
+
+always @(posedge clk or negedge rstn) begin
+  if (!rstn) phase_state <= PHASE_IDLE;
+  else begin
+    if (edge_done) edge_done_captured <= 1'b1;   // sticky latches
+    if (node_done) node_done_captured <= 1'b1;
+    case (phase_state)
+      PHASE_IDLE: begin wait_counter<=10; phase_state<=PHASE_EDGE_ENCODE; end
+      PHASE_EDGE_ENCODE:
+        if (wait_counter>0) wait_counter<=wait_counter-1;
+        else begin edge_start<=1; node_start<=1;        // start in parallel
+                   phase_state<=PHASE_EDGE_ENCODE_WAIT; end
+      PHASE_EDGE_ENCODE_WAIT:                           // wait BOTH done
+        if ((edge_done|edge_done_captured) &&
+            (node_done|node_done_captured)) begin
+          edge_done_captured<=0; node_done_captured<=0;
+          phase_state<=PHASE_MESSAGE_PASSING;
+        end
+      PHASE_MESSAGE_PASSING:
+        if (wait_counter>0) wait_counter<=wait_counter-1;
+        else begin mp_start<=1; phase_state<=PHASE_MESSAGE_PASSING_WAIT; end
+      PHASE_MESSAGE_PASSING_WAIT:
+        if (mp_done) phase_state<=PHASE_EDGE_DECODE;
+      PHASE_EDGE_DECODE:
+        if (wait_counter>0) wait_counter<=wait_counter-1;
+        else begin dec_start<=1; phase_state<=PHASE_EDGE_DECODE_WAIT; end
+      PHASE_EDGE_DECODE_WAIT: if (dec_done) phase_state<=PHASE_DONE;
+      PHASE_DONE: phase_state<=PHASE_DONE;
+    endcase
+  end
+end
+assign processing_done = (phase_state == PHASE_DONE);
+\end{lstlisting}
+
+% =============================================================================
+\subsection{Pipelined Edge Network (\texttt{Edge\_Network.v})}
+3$\times$ L1 round-robin dispatch + L2/L3 pipeline via the
+\texttt{CS\_L2\_GAP} state. Throughput becomes one layer time
+(\texttt{max(L2,L3)}) instead of two.
+
+\begin{lstlisting}
+// 3x L1 instances dispatched round-robin from load FIFO
+wire do_dispatch_a = !fifo_empty && (dispatch_rr==0) && !l1a_busy;
+wire do_dispatch_b = !fifo_empty && (dispatch_rr==1) && !l1b_busy;
+wire do_dispatch_c = !fifo_empty && (dispatch_rr==2) && !l1c_busy;
+
+// L1->L2 inter-stage FIFO; L1 outputs collected into s_data[]
+wire do_collect_a = Layer1a_valid && l1a_busy && !s_full;
+wire do_collect_b = Layer1b_valid && l1b_busy && !s_full && !do_collect_a;
+wire do_collect_c = Layer1c_valid && l1c_busy && !s_full
+                                  && !do_collect_a && !do_collect_b;
+
+// L2/L3 pipeline FSM
+localparam CS_IDLE=0, CS_L2W=1, CS_L2_GAP=2, CS_L3W=3;
+// CS_L2W   : L2 runs on edge k
+// CS_L2_GAP: layer2_held=0 (counter resets), layer3_held=1 starts L3 on k;
+//            if FIFO has edge k+1, load it -> L2 restarts next cycle
+// CS_L3W   : L3 runs on edge k, L2 may run concurrently on edge k+1
+
+// L2 ping-pong output buffer prevents L3 mid-run corruption
+reg [DATA_BITS*EDGE_FEATURES-1:0] pp_buf [0:1];
+reg pp_wr;
+reg [DATA_BITS*EDGE_FEATURES-1:0] Layer2_out_r;  // stable L3 input
+\end{lstlisting}
+
+% =============================================================================
+\subsection{Layer Normalization Top-Level FSM (\texttt{layer\_norm.v})}
+Sequences the four sub-modules implementing
+$y_i=((x_i-\mu)/\sqrt{\sigma^2+\epsilon})\gamma_i+\beta_i$ then optional
+ReLU. Sub-module latencies: mean 6, var 7, inv\_sqrt 4, normalize 3,
+relu 1.
+
+\begin{lstlisting}
+localparam [3:0] S_IDLE=0, S_CAPTURE=1, S_WAIT_MEAN=2, S_START_VAR=3,
+  S_WAIT_VAR=4, S_START_SQRT=5, S_WAIT_SQRT=6, S_START_NORM=7,
+  S_WAIT_NORM=8, S_START_RELU=9, S_WAIT_RELU=10, S_OUTPUT=11;
+always @(*) begin
+  next_state = state;
+  case (state)
+    S_IDLE       : if (valid_in) next_state = S_CAPTURE;
+    S_CAPTURE    : next_state = S_WAIT_MEAN;
+    S_WAIT_MEAN  : if (mean_valid)     next_state = S_START_VAR;
+    S_START_VAR  : next_state = S_WAIT_VAR;
+    S_WAIT_VAR   : if (var_valid)      next_state = S_START_SQRT;
+    S_START_SQRT : next_state = S_WAIT_SQRT;
+    S_WAIT_SQRT  : if (sqrt_valid)     next_state = S_START_NORM;
+    S_START_NORM : next_state = S_WAIT_NORM;
+    S_WAIT_NORM  : if (norm_valid)     next_state = S_START_RELU;
+    S_START_RELU : next_state = S_WAIT_RELU;
+    S_WAIT_RELU  : if (relu_valid)     next_state = S_OUTPUT;
+    S_OUTPUT     : next_state = S_IDLE;
+  endcase
+end
+\end{lstlisting}
+
+% =============================================================================
+\subsection{Counter \& Multiplier Primitives}
+\begin{lstlisting}
+module counter #(parameter END_COUNTER = 32'd0)(
+    input clk, rstn, output reg [31:0] counter_out,
+    output reg counter_donestatus);
+  always @(posedge clk) begin
+    if (!rstn) begin counter_out<=0; counter_donestatus<=0; end
+    else if (counter_out >= END_COUNTER+1) begin
+      counter_out <= END_COUNTER+1; counter_donestatus <= 1'b1;
+    end else begin
+      counter_out <= counter_out + 1'b1; counter_donestatus <= 1'b0;
+    end
+  end
+endmodule
+
+module multiplier #(parameter DATA_BITS=8, WEIGHT_BITS=8)(
+    input clk, rstn,
+    input  signed [WEIGHT_BITS-1:0] w,
+    input  signed [DATA_BITS-1:0]   x,
+    output reg signed [DATA_BITS+WEIGHT_BITS-1:0] mult_result);
+  always @(posedge clk or negedge rstn)
+    if (!rstn) mult_result <= 0;
+    else       mult_result <= w * x;
+endmodule
+\end{lstlisting}
 
 \end{document}
