@@ -73,3 +73,11 @@ Each MP block runs serially:
 * total per block: ~224 cycles
 
 With 8 blocks, end-to-end MP latency is ~1.8k cycles per graph.
+
+### Storage init order
+
+1. `mem_files/connectivity_*.mem` loaded via `$readmemb` at elaboration.
+2. `mif/ln_gamma_*.mif`, `mif/ln_beta_*.mif` loaded per layer-norm instance.
+3. `mif/test_weights.mif`, `mif/test_bias.mif` loaded into encoder layers.
+
+Edge / node feature MEMs are loaded at runtime through the burst sequencer.
