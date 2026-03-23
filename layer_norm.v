@@ -1,9 +1,3 @@
-// ============================================================
-// layer_norm.v
-// Top-level layer normalization wrapper.
-// Pipelines: mean -> variance -> inv_sqrt -> normalize -> relu
-// Bias/scale parameters loaded from mif/ at elaboration time.
-// ============================================================
 `timescale 1ns / 1ps
 //==============================================================================
 // layer_norm.v  —  Layer Normalization Top-Level (Moore FSM)
