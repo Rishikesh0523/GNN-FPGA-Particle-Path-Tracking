@@ -81,3 +81,9 @@ With 8 blocks, end-to-end MP latency is ~1.8k cycles per graph.
 3. `mif/test_weights.mif`, `mif/test_bias.mif` loaded into encoder layers.
 
 Edge / node feature MEMs are loaded at runtime through the burst sequencer.
+
+### Burst sizing notes
+
+The default `MAX_BURST_SIZE = 32` matches the encoder layer width.
+Lower settings save buffer area but pay the setup overhead more often;
+`burst_sweep.py` reports the trade.
