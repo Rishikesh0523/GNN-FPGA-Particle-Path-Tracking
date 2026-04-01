@@ -1,7 +1,8 @@
 """Sweep burst sizes against expected encoder throughput.
 
-Reports cycles-per-graph for burst sizes 8/16/32/64 to help pick
-the right MAX_BURST_SIZE parameter for bram_burst_wrapper.
+Reports cycles-per-graph for burst sizes 8/16/32/64 and the ratio
+against the baseline (32) so it's easy to spot which size is fastest
+for a given graph shape.
 """
 import argparse
 
@@ -16,8 +17,12 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--burst-sizes", default="8,16,32,64")
     args = ap.parse_args()
-    for b in (int(x) for x in args.burst_sizes.split(",")):
-        print(f"burst={b:3d} cycles={estimate(b):4d}")
+    sizes = [int(x) for x in args.burst_sizes.split(",")]
+    baseline = estimate(32)
+    for b in sizes:
+        c = estimate(b)
+        ratio = c / baseline
+        print(f"burst={b:3d} cycles={c:4d} x{ratio:.2f}")
 
 
 if __name__ == "__main__":
