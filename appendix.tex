@@ -290,3 +290,12 @@ endmodule
 \end{lstlisting}
 
 \end{document}
+
+\section{Reset Strategy}
+
+All RTL modules use a synchronous active-low reset (\texttt{rstn}).
+Storage and BRAM-backed buffers reset their address counters but
+preserve memory contents (which are loaded via \texttt{\$readmem*}
+at elaboration time). The burst sequencer is the only stage with an
+asynchronous-style \texttt{rst} input, retained for ease of testbench
+control.
