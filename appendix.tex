@@ -299,3 +299,10 @@ preserve memory contents (which are loaded via \texttt{\$readmem*}
 at elaboration time). The burst sequencer is the only stage with an
 asynchronous-style \texttt{rst} input, retained for ease of testbench
 control.
+
+\section{Decoder}
+
+The edge decoder mirrors the encoder structure but with a single
+output dimension. \texttt{Edge\_Output\_Transform.v} flattens the
+per-edge feature vector to a scalar prediction stream, which is then
+written back to the storage subsystem for host readout.
