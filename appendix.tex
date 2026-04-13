@@ -306,3 +306,14 @@ The edge decoder mirrors the encoder structure but with a single
 output dimension. \texttt{Edge\_Output\_Transform.v} flattens the
 per-edge feature vector to a scalar prediction stream, which is then
 written back to the storage subsystem for host readout.
+
+\section{Verification flow}
+
+\begin{enumerate}
+  \item \texttt{gen\_expected.py} produces golden vectors in
+        \texttt{mem\_files/}.
+  \item iverilog runs the top-level testbench, reading the same
+        \texttt{mem\_files/} via the storage init paths.
+  \item \texttt{test.py} compares the per-edge output stream to the
+        golden vectors, tolerating $\pm 1$ LSB of fixed-point error.
+\end{enumerate}
