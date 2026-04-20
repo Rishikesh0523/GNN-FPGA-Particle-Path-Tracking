@@ -317,3 +317,18 @@ written back to the storage subsystem for host readout.
   \item \texttt{test.py} compares the per-edge output stream to the
         golden vectors, tolerating $\pm 1$ LSB of fixed-point error.
 \end{enumerate}
+
+\section{Parameter Quantization}
+
+All hidden activations are stored in Q1.7. Weights are Q2.6 with
+saturating clamps at the MAC output. Layer-norm gamma / beta are
+stored in Q1.7. The inverse-square-root LUT is Q1.11. The choice
+was driven by the smallest representable variance after the
+8-feature aggregation step in the first MP block.
+
+\section{Status}
+
+The pipeline currently supports graphs up to 16 nodes / 32 edges
+with feature dim 32. The decoder produces a per-edge scalar
+prediction. End-to-end latency is approximately 3.5k cycles per
+graph at 200 MHz.
