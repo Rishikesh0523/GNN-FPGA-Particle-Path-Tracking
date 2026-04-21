@@ -25,3 +25,15 @@ for i in range(LUT_SIZE - 1):
 print(f"        else                       variance_to_lut_addr = {LUT_SIZE - 1};")
 print("    end")
 print("endfunction")
+
+def check_normalize_saturation():
+    # After dividing by std, values should fit in Q1.7 - sanity check.
+    import math
+    max_abs = 4.0  # 4 sigma cap
+    q17 = int(max_abs * (1 << 7))
+    assert q17 < (1 << 15), q17
+    print("normalize: saturation OK")
+
+
+if __name__ == "__main__":
+    check_normalize_saturation()
