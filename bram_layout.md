@@ -22,3 +22,14 @@ A reference for which bank holds what once the design is on hardware.
 * All BRAMs use `RAM_STYLE = ULTRA` where feasible; small ports fall back
   to BRAM18.
 * The burst sequencer drives URAMs through `bram_burst_wrapper.v`.
+
+## Address layout (edge buffer, URAM_0)
+
+| Offset      | Field                 |
+|-------------|-----------------------|
+| 0x000-0x1FF | block 0 edge features |
+| 0x200-0x3FF | block 0 scatter sum   |
+| 0x400-0x5FF | block 1 edge features |
+| ...         | ...                   |
+
+Block stride is `0x200` (2 KB) per block.
