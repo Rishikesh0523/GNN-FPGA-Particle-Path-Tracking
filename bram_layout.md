@@ -33,3 +33,14 @@ A reference for which bank holds what once the design is on hardware.
 | ...         | ...                   |
 
 Block stride is `0x200` (2 KB) per block.
+
+## Sizing summary
+
+| Resource        | Used  | Available (XCAU25P) |
+|-----------------|-------|----------------------|
+| URAM288         | 18    | 64                   |
+| BRAM18          | 6     | 300                  |
+| DSP48           | ~512  | 1968                 |
+
+DSP usage is dominated by the MP MAC arrays; further reuse is
+possible via time-multiplexing across blocks but isn't yet wired up.
